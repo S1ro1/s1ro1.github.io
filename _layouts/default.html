@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ page.title }} - {{ site.title }}</title>
-    {% include head.html %}
     <style>
       body {
         font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI",
@@ -46,10 +45,6 @@
     </style>
   </head>
   <body>
-    <nav>
-      <a href="/">Home</a>
-    </nav>
-
     <main>{{ content }}</main>
 
     <footer
