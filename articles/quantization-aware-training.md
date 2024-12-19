@@ -22,7 +22,7 @@ Formally, quantization is the process of constraining an input from a continuous
 
 2) **Speedup:**
     Quantization can also help in speeding up the inference, sometimes even the training process. From computer architecture perspective, the operations on large data types, such as
-    `float16` or `float32`are expensive and slow. These operations are way faster and cheaper when performed on smaller data types like `int8` or `float8`. When we take a look at the current state-of-the-art GPU Nvidia H100 and its [datasheet](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet), we can see that the performance of the GPU Tensor Cores linearly increases with the decrease in the data type size.
+    `float16` or `float32` are expensive and slow. These operations are way faster and cheaper when performed on smaller data types like `int8` or `float8`. When we take a look at the current state-of-the-art GPU Nvidia H100 and its [datasheet](https://resources.nvidia.com/en-us-tensor-core/nvidia-tensor-core-gpu-datasheet), we can see that the performance of the GPU Tensor Cores linearly increases with the decrease in the data type size.
 
 
 Now, that we have a basic understanding on why quantization is important, let's take a look at how quantization works. 
