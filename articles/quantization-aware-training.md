@@ -29,7 +29,7 @@ Now, that we have a basic understanding on why quantization is important, let's 
 
 ***Important*** To simplify things, we will only be looking at quantization to a lower precision data type, that exists in the PyTorch framework, to avoid hassles of binary operations. That is, from `torch.float16` to `torch.int8`. Also, we will be considering a method called `Linear Quantization`. This is the most common method of quantization.
 
-### How does Quantization work?
+## How does Quantization work?
 If we think of `int8` as a data type, it can store values in the range of `[-128, 127]`. However, our weights and activations in `float16` have a range of `[-65504, 65504]`. Also, this range in `float16` is not uniformly distributed, therefore accommodating a lot more possible values. To quantize the weights and activations, we need to map the values in `float16` to the range of `int8`. This can be done by the following steps:
 
 1) **Min and Max Calculation:**
@@ -160,7 +160,7 @@ It's easier to see this in a diagram:
 ![Quantization Aware Training](/media/QAT.png)
 *Figure 4: Visual representation of Quantization Aware Training. In this diagram, we can see that the weights are stored in the original data type, and are quantized and dequantized during the forward pass. This simulates the inference process, where the weights are loaded from memory and then dequantized. During the backward pass, we pass the gradient to the original weights, which are then updated.*
 
-###  Implementation
+##  Implementation
 To properly implement this, we would like to replace all of the `torch.nn.Linear` layers with our own custom implementation. This custom implementation would involve the following:
 
 - Quantizing the weights
