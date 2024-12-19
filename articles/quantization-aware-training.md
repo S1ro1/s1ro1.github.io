@@ -35,7 +35,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
 1) **Min and Max Calculation:**
     We need to calculate the minimum and maximum values in the data. This will tell us what values map to `int8.min` and `int8.max`.
 
-    ![Min and Max Calculation](/media/Max.png)
+    ![Min and Max Calculation](/media/max.png)
     *Figure 1: Visual representation of min and max calculation, `W_max` and `W_min` are the maximum and minimum values in tensor to be quantized, these values then map to `int8.max` and `int8.min` respectively.*
 
 
@@ -43,7 +43,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
     We can think of zero point as the point where the `float16` value of `0` lies in the `int8` data type. This basically maps the real number `r=0` to a quantized integer.
 
 
-    ![Zero Point Calculation](/media/Zero-Point.png)
+    ![Zero Point Calculation](/media/zp.png)
     *Figure 2: Visual representation of zero point calculation. `Z` on the quantized axis is the zero point, and represents where the `r=0.0` lies on the quantized axis.*
 
 3) **Scale Calculation:**
