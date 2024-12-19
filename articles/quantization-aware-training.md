@@ -35,7 +35,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
 1) **Min and Max Calculation:**
     We need to calculate the minimum and maximum values in the data. This will tell us what values map to `int8.min` and `int8.max`.
 
-![Min and Max Calculation](/media/max.png)
+![Min and Max Calculation](/media/zp.png)
 *Figure 1: Visual representation of min and max calculation, W_max and W_min are the maximum and minimum values in tensor to be quantized, these values then map to int8.max and int8.min respectively.*
 
 
@@ -258,6 +258,7 @@ model = replace_layers_with_quantized(model)
 As you might have noticed, we have written quite a lot of code, which doesn't handle a lot of edge cases and is rather simple. We can use PyTorch's [AO](https://github.com/pytorch/ao) library to do this for us. This library provides a [QAT](https://github.com/pytorch/ao/tree/main/torchao/quantization/qat) module, which provides functionality for different quantization schemes.
 
 The examples shown were purely educational. In production, different quantization schemes are used to improve the performance of the model. `AO` currently provides 2 different quantization schemes (note the different granularities of quantization, as discussed in the [Quantization Granularity](#quantization-granularity) section), which are:
+
 1) **int8 per token dynamic activation quantization with int4 per group weight quantization:**
     This method quantizes weights to `int8` and activations to `int4`. Then, computation is done in original data type, that is `float16` usually. This is a good starting point for quantization aware training.
 
