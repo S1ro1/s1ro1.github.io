@@ -9,6 +9,8 @@ linkedin_username: Matej Sirovatka
 
 # Build settings
 markdown: kramdown
+kramdown:
+    math_engine: katex
 highlighter: rouge
 
 # Plugins

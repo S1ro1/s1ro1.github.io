@@ -52,14 +52,12 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
 
 After these steps, we have everything we need to quantize and dequantize the data. With `r` being the real number, `q` being the quantized number, `Z` being the zero point, and `S` being the scale, the quantization and dequantization can be done by the following equations:
 
-{% raw %}
 $$
 q = \text{round}\left(\frac{r}{S}\right) + Z
 $$
 $$
 r = (q - Z) \cdot S
 $$
-{% endraw %}
 
 With some additional math, we can also derive the scale and zero point equations from the min and max values.
 
