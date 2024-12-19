@@ -55,6 +55,7 @@ After these steps, we have everything we need to quantize and dequantize the dat
 $$
 q = \text{round}\left(\frac{r}{S}\right) + Z
 $$
+
 $$
 r = (q - Z) \cdot S
 $$
@@ -64,6 +65,7 @@ With some additional math, we can also derive the scale and zero point equations
 $$
 S = \frac{W_{max} - W_{min}}{Q_{max} - Q_{min}} = \frac{W_{max} - W_{min}}{127 - (-128)}
 $$
+
 $$
 Z = \text{round}\left(Q_{min} - \frac{W_{min}}{S}\right) = \text{round}\left(-128 - \frac{W_{min}}{S}\right)
 $$
