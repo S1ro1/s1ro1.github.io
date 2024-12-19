@@ -2,7 +2,7 @@
 layout: default
 title: Quantization Aware Training
 description: In-depth guide to implementing quantization aware training in PyTorch
-date: 2024-03-21
+date: 2024-12-19
 ---
 
 # Quantization Aware Training
