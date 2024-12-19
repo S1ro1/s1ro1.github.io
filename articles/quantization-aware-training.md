@@ -36,7 +36,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
     We need to calculate the minimum and maximum values in the data. This will tell us what values map to `int8.min` and `int8.max`.
 
 ![Min and Max Calculation](/media/m.png)
-*Figure 1: Visual representation of min and max calculation, W_max and W_min are the maximum and minimum values in tensor to be quantized, these values then map to int8.max and int8.min respectively.*
+*Figure 1: Visual representation of min and max calculation, `W_max` and `W_min` are the maximum and minimum values in tensor to be quantized, these values then map to `int8.max` and `int8.min` respectively.*
 
 
 2) **Zero Point Calculation:**
@@ -44,7 +44,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
 
 
 ![Zero Point Calculation](/media/zp.png)
-*Figure 2: Visual representation of zero point calculation. Z on the quantized axis is the zero point, and represents where the r=0.0 lies on the quantized axis.*
+*Figure 2: Visual representation of zero point calculation. `Z` on the quantized axis is the zero point, and represents where the `r=0.0` lies on the quantized axis.*
 
 3) **Scale Calculation:**
     The scale basically tells us, how much each unit in the quantized data type represents in the original data type. Imagine a scale of `1.0`, this means that each unit in the quantized data type represents `1.0` in the original data type. The larger the scale, the larger is the original input range.
