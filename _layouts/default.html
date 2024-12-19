@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }} - {{ site.title }}</title>
+    
+    <!-- MathJax Configuration -->
+    <script type="text/x-mathjax-config">
+        MathJax.Hub.Config({
+            tex2jax: {
+                inlineMath: [['$','$'], ['\\(','\\)']],
+                displayMath: [['$$','$$'], ['\\[','\\]']],
+                processEscapes: true
+            },
+            TeX: {
+                equationNumbers: { autoNumber: "AMS" }
+            }
+        });
+    </script>
+    
+    <!-- Load MathJax -->
+    <script type="text/javascript" async
+        src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
+    </script>
+
+    <style>
+        body {
+            font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        nav {
+            margin-bottom: 2rem;
+        }
+        .date {
+            color: #666;
+            font-size: 0.9em;
+        }
+        pre {
+            padding: 1rem;
+            overflow-x: auto;
+            background: #f6f8fa;
+            border-radius: 4px;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Home</a>
+    </nav>
+    
+    <main>
+        {{ content }}
+    </main>
+
+    <footer style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #eee;">
+        <p>© {{ site.time | date: '%Y' }} {{ site.author }}. All rights reserved.</p>
+    </footer>
+</body>
+</html>
