@@ -1,0 +1,17 @@
+theme: jekyll-theme-minimal
+title: AI & ML Resources
+description: Exploring artificial intelligence and machine learning concepts
+author: Matej Sirovatka
+
+# Social links (optional)
+github_username: S1ro1
+linkedin_username: Matej Sirovatka
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+
+# Plugins
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
