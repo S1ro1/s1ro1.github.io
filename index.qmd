@@ -3,13 +3,13 @@
 
 My name is Matej, but everyone calls me Siro. I'm a student of Artificial Intelligence and Machine Learning @ Brno University of Technology.
 
-I work at 🤗 Hugging Face, where you can mostly find me working on distributed training and inference in [accelerate](https://github.com/huggingface/accelerate) and [transformers](https://github.com/huggingface/transformers).
+I work at 🤗 Hugging Face, where you can mostly find me working on distributed training and inference in [accelerate](https://github.com/huggingface/accelerate) and [transformers](https://github.com/huggingface/transformers). I'm also one of the core maintainers of [Cluster Bot](https://github.com/gpu-mode/discord-cluster-manager).
 
-I'm also one of the core maintainers of [Cluster Bot](https://github.com/gpu-mode/discord-cluster-manager). As you might have guessed, I'm mostly interested in AI and where it intersects with systems programming.
+As you might have guessed, I'm mostly interested in AI and where it intersects with systems programming. I liked AI before, but I was getting more and more annoyed by waiting for my training runs to finish, so I switched to making the runs go `brrr` 🚀.
 
 ## Articles
 
-When I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below.
+When I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below. Anything from chip design to distributed training...
 
 ::: {{#posts-listing}}
 :::
