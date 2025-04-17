@@ -1,0 +1,28 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Matej Sirovatka"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+  page-footer:
+    right:
+      - icon: github
+        href: https://github.com/S1ro1
+      - icon: linkedin
+        href: https://www.linkedin.com/in/matej-sirovatka-45959b256/
+
+format:
+  html:
+    theme:
+      - litera
+      - custom.scss
+
+listing:
+  - id: posts-listing
+    contents: articles
+    type: default 
+    sort: "date desc"
