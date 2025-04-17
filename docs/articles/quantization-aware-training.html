@@ -251,11 +251,11 @@ window.Quarto = {
 <ol type="1">
 <li><strong>Min and Max Calculation:</strong> We need to calculate the minimum and maximum values in the data. This will tell us what values map to <code>int8.min</code> and <code>int8.max</code>.</li>
 </ol>
-<p><img src="../media/m.png" class="img-fluid" alt="Min and Max Calculation"> <em>Figure 1: Visual representation of min and max calculation, <code>W_max</code> and <code>W_min</code> are the maximum and minimum values in tensor to be quantized, these values then map to <code>int8.max</code> and <code>int8.min</code> respectively.</em></p>
+<p><img src="../quantization-aware-training/media/m.png" class="img-fluid" alt="Min and Max Calculation"> <em>Figure 1: Visual representation of min and max calculation, <code>W_max</code> and <code>W_min</code> are the maximum and minimum values in tensor to be quantized, these values then map to <code>int8.max</code> and <code>int8.min</code> respectively.</em></p>
 <ol start="2" type="1">
 <li><strong>Zero Point Calculation:</strong> We can think of zero point as the point where the <code>float16</code> value of <code>0</code> lies in the <code>int8</code> data type. This basically maps the real number <code>r=0</code> to a quantized integer.</li>
 </ol>
-<p><img src="../media/zp.png" class="img-fluid" alt="Zero Point Calculation"> <em>Figure 2: Visual representation of zero point calculation. <code>Z</code> on the quantized axis is the zero point, and represents where the <code>r=0.0</code> lies on the quantized axis.</em></p>
+<p><img src="../quantization-aware-training/media/zp.png" class="img-fluid" alt="Zero Point Calculation"> <em>Figure 2: Visual representation of zero point calculation. <code>Z</code> on the quantized axis is the zero point, and represents where the <code>r=0.0</code> lies on the quantized axis.</em></p>
 <ol start="3" type="1">
 <li><strong>Scale Calculation:</strong> The scale basically tells us, how much each unit in the quantized data type represents in the original data type. Imagine a scale of <code>1.0</code>, this means that each unit in the quantized data type represents <code>1.0</code> in the original data type. The larger the scale, the larger is the original input range.</li>
 </ol>
@@ -308,7 +308,7 @@ Z = \text{round}\left(Q_{min} - \frac{W_{min}}{S}\right) = \text{round}\left(-12
 <section id="clipping" class="level3">
 <h3 class="anchored" data-anchor-id="clipping">Clipping</h3>
 <p>You might have noticed that we lose quite a lot of information while quantizing the tensor. This might lead to a precision loss, which can be detrimental to the performance of the model. Imagine a scenario where our input tensor distribution looks like the following:</p>
-<p><img src="../media/Outliers.png" class="img-fluid" alt="Input Distribution"> <em>Figure 3: A pretty common distribution of weights, where most of the values are centered around 0.0.</em></p>
+<p><img src="../quantization-aware-training/media/Outliers.png" class="img-fluid" alt="Input Distribution"> <em>Figure 3: A pretty common distribution of weights, where most of the values are centered around 0.0.</em></p>
 <p>Now imagine, we have a single data-point, which is far from the distribution, let’s say <code>W_max=1000.0</code>. If we try to quantize this tensor, the scale would be very large, therefore a distance of <code>1</code> in the quantized data would represent a very large distance in the original unquantized data. But remember, our input tensor is distributed around <code>0.0</code>, with most values lying in the range of <code>[-10.0, 10.0]</code>. This means that most of these values would be quantized to the same value, therefore losing a lot of information leading to a loss in performance.</p>
 <p>To fix this issue, we can use a method called <code>Clipping</code>. This method involves clipping the values of the tensor to a certain range, and then quantizing the tensor. Our PyTorch implementation can be extended to include this method by the following:</p>
 <div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> quantize_tensor(</span>
@@ -350,7 +350,7 @@ Z = \text{round}\left(Q_{min} - \frac{W_{min}}{S}\right) = \text{round}\left(-12
 </ul>
 <p>You might be wondering, why do we compute with the dequantized weights, but update the original weights? If you remember our implementation, to dequantize the tensor, we round the values to the nearest integer. This means that if the gradient w.r.t. the dequantized weights is used to update the dequantized weights, the change could be too small to be further visible in the integer representation, therefore we would lose the update information. We can think of this as <em>passing</em> the gradient to the original weights. This is called <code>STE</code> or <code>Straight Through Estimator</code>.</p>
 <p>It’s easier to see this in a diagram:</p>
-<p><img src="../media/QAT.png" class="img-fluid" alt="Quantization Aware Training"> <em>Figure 4: Visual representation of Quantization Aware Training. In this diagram, we can see that the weights are stored in the original data type, and are quantized and dequantized during the forward pass. This simulates the inference process, where the weights are loaded from memory and then dequantized. During the backward pass, we pass the gradient to the original weights, which are then updated.</em></p>
+<p><img src="../quantization-aware-training/media/QAT.png" class="img-fluid" alt="Quantization Aware Training"> <em>Figure 4: Visual representation of Quantization Aware Training. In this diagram, we can see that the weights are stored in the original data type, and are quantized and dequantized during the forward pass. This simulates the inference process, where the weights are loaded from memory and then dequantized. During the backward pass, we pass the gradient to the original weights, which are then updated.</em></p>
 </section>
 <section id="implementation-1" class="level2">
 <h2 class="anchored" data-anchor-id="implementation-1">Implementation</h2>

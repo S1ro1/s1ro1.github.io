@@ -35,7 +35,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
 1) **Min and Max Calculation:**
     We need to calculate the minimum and maximum values in the data. This will tell us what values map to `int8.min` and `int8.max`.
 
-![Min and Max Calculation](../media/m.png)
+![Min and Max Calculation](../quantization-aware-training/media/m.png)
 *Figure 1: Visual representation of min and max calculation, `W_max` and `W_min` are the maximum and minimum values in tensor to be quantized, these values then map to `int8.max` and `int8.min` respectively.*
 
 
@@ -43,7 +43,7 @@ If we think of `int8` as a data type, it can store values in the range of `[-128
     We can think of zero point as the point where the `float16` value of `0` lies in the `int8` data type. This basically maps the real number `r=0` to a quantized integer.
 
 
-![Zero Point Calculation](../media/zp.png)
+![Zero Point Calculation](../quantization-aware-training/media/zp.png)
 *Figure 2: Visual representation of zero point calculation. `Z` on the quantized axis is the zero point, and represents where the `r=0.0` lies on the quantized axis.*
 
 3) **Scale Calculation:**
@@ -107,7 +107,7 @@ def dequantize_tensor(q_tensor: QTensor) -> torch.Tensor:
 ### Clipping
 You might have noticed that we lose quite a lot of information while quantizing the tensor. This might lead to a precision loss, which can be detrimental to the performance of the model. Imagine a scenario where our input tensor distribution looks like the following:
 
-![Input Distribution](../media/Outliers.png)
+![Input Distribution](../quantization-aware-training/media/Outliers.png)
 *Figure 3: A pretty common distribution of weights, where most of the values are centered around 0.0.*
 
 Now imagine, we have a single data-point, which is far from the distribution, let's say `W_max=1000.0`. If we try to quantize this tensor, the scale would be very large, therefore a distance of `1` in the quantized data would represent a very large distance in the original unquantized data.
@@ -157,7 +157,7 @@ You might be wondering, why do we compute with the dequantized weights, but upda
 
 It's easier to see this in a diagram:
 
-![Quantization Aware Training](../media/QAT.png)
+![Quantization Aware Training](../quantization-aware-training/media/QAT.png)
 *Figure 4: Visual representation of Quantization Aware Training. In this diagram, we can see that the weights are stored in the original data type, and are quantized and dequantized during the forward pass. This simulates the inference process, where the weights are loaded from memory and then dequantized. During the backward pass, we pass the gradient to the original weights, which are then updated.*
 
 ##  Implementation
