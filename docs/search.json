@@ -4,14 +4,14 @@
     "href": "index.html",
     "title": "About",
     "section": "",
-    "text": "My name is Matej, but everyone calls me Siro. I’m a student of Artificial Intelligence and Machine Learning @ Brno University of Technology.\nI work at 🤗 Hugging Face, where you can mostly find me working on distributed training and inference in accelerate and transformers.\nI’m also one of the core maintainers of Cluster Bot. As you might have guessed, I’m mostly interested in AI and where it intersects with systems programming.\n\n\nWhen I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below."
+    "text": "My name is Matej, but everyone calls me Siro. I’m a student of Artificial Intelligence and Machine Learning @ Brno University of Technology.\nI work at 🤗 Hugging Face, where you can mostly find me working on distributed training and inference in accelerate and transformers. I’m also one of the core maintainers of Cluster Bot.\nAs you might have guessed, I’m mostly interested in AI and where it intersects with systems programming. I liked AI before, but I was getting more and more annoyed by waiting for my training runs to finish, so I switched to making the runs go brrr 🚀.\n\n\nWhen I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below. Anything from chip design to distributed training…"
   },
   {
     "objectID": "index.html#articles",
     "href": "index.html#articles",
     "title": "About",
     "section": "",
-    "text": "When I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below."
+    "text": "When I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below. Anything from chip design to distributed training…"
   },
   {
     "objectID": "articles/quantization-aware-training.html",
