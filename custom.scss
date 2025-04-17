@@ -1,0 +1,27 @@
+/*-- scss:defaults --*/
+
+// Custom background color
+$body-bg: #FBF6E4;
+
+// Custom navbar background color
+$navbar-bg: #FBF6E4;
+
+// Other backgrounds
+$footer-bg: #FBF6E4;
+$sidebar-bg: #FBF6E4; // For potential future sidebars
+$popover-bg: #FBF6E4; // For citation previews, etc.
+$input-bg: #FBF6E4;   // For input fields
+
+// Code block background
+$code-block-bg: #eee9d7;
+
+// Inline code background
+$code-bg: #eee9d7;
+/*-- scss:rules --*/
+
+// Add other custom CSS rules here if needed later
+
+// Set background for callout blocks
+.callout {
+  background-color: #FBF6E4 !important; // Use !important to ensure override
+} 

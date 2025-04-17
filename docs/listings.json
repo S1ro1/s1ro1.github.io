@@ -1,0 +1,12 @@
+[
+  {
+    "listing": "/index.html",
+    "items": [
+      "/articles/quantization-aware-training.html"
+    ]
+  },
+  {
+    "listing": "/articles/quantization-aware-training.html",
+    "items": []
+  }
+]
