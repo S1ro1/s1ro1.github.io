@@ -75,5 +75,61 @@
     "title": "Quantization Aware Training",
     "section": "",
     "text": "In this tutorial, we have looked at the concept of quantization aware training, how does it work in depth, its benefits and how to implement it from scratch in PyTorch, and how to use AO to do this for us, which is a lot more efficient approach."
+  },
+  {
+    "objectID": "articles/deepcompile.html",
+    "href": "articles/deepcompile.html",
+    "title": "DeepCompile",
+    "section": "",
+    "text": "In release 0.16.6 of DeepSpeed, you can find a new interesting feature. It’s called DeepCompile, in the release notes it’s hidden as the last feature (who reads those, right?) and if friend didn’t tag me with DeepSpeed’s post on X, I would have probably missed it. So why is it interesting?\nDeepSpeed is a framework for distributed training, it’s a pretty big library, most notable feature being probably the implementation of ZeRO. With DeepCompile, they enable compiler-based optimizations for ZeRO algorithms. Why should we care you might ask? There currently is a lot of work going on in the field of optimizing distributed training. The common problem is that communication operations (all-gather, reduce-scatter, etc.) which are ever-present in the training loop, are inserted at runtime, making them hard to optimize.\n\n\n\n\n\n\nNote\n\n\n\nIn the rest of this article, I’ll assume you are familiar with communication primitives and basics of distributed training."
+  },
+  {
+    "objectID": "articles/deepcompile.html#zero-training-loop",
+    "href": "articles/deepcompile.html#zero-training-loop",
+    "title": "DeepCompile",
+    "section": "ZeRO training loop",
+    "text": "ZeRO training loop\nI mentioned that each GPU holds only a partition of the model, optimizer state and gradients. But how can the training loop work then? Before a part of the model is used (its .forward() method is called), it is all-gathered across all GPUs. Then after its forward pass, the memory is freed (usually, though this can be controlled by the user). When this layer is again needed for backward pass, it’s all-gathered again (if it was freed before). Then at the optimizer step, each GPU is responsible for updating only its partition of the model.\n Figure 1: Visualization of the ZeRO training loop showing how model parameters are partitioned across GPUs, all-gathered when needed for forward/backward passes, and then freed to conserve memory."
+  },
+  {
+    "objectID": "articles/deepcompile.html#prefetching",
+    "href": "articles/deepcompile.html#prefetching",
+    "title": "DeepCompile",
+    "section": "Prefetching",
+    "text": "Prefetching\nIf you’re already familiar with this, or curious enough, you might have identified part of the issues. In GPUs, we can easily overlap communication and computation. This allows us to start the all-gather for the current layer while the previous layer is still in the memory. Why can’t we start even earlier, beginning the all-gather operation before the pre-previous layer? We can! This method is called prefetching. But we don’t know when to stop/start the prefetching, if we start too early, we risk having too many layers in the memory -&gt; RuntimeError: CUDA error: out of memory. If we start too late, the layer might not be gathered in time for its forward pass -&gt; slow training 💤. PyTorch implementation addresses this by prefetching maximum of 1 layer ahead, therefore maximum of 2 layers are in memory at the same time. But this only a somewhat conservative heuristic. We can do better (and DeepCompile does exactly that, more on that later)."
+  },
+  {
+    "objectID": "articles/deepcompile.html#resharding",
+    "href": "articles/deepcompile.html#resharding",
+    "title": "DeepCompile",
+    "section": "Resharding",
+    "text": "Resharding\nIf we have enough memory left, do we need to free the memory after the forward pass of the layer? No, we don’t! PyTorch controls this via options like ShardingStrategy.SHARD_GRAD_OP for FSDP1 and reshard_after_forward=False for FSDP2. This way, the layer is kept in memory after its foward pass until it’s again needed for backward. But this is again a binary choice, either we keep the layer in memory or we don’t. We can do better. Again, DeepCompile does!"
+  },
+  {
+    "objectID": "articles/deepcompile.html#offloading",
+    "href": "articles/deepcompile.html#offloading",
+    "title": "DeepCompile",
+    "section": "Offloading",
+    "text": "Offloading\nSome memory parts, like the optimizer state, are not needed for the training loop. The optimizer state is only needed for the parameter update (after the backward pass). Do we need to keep it in GPU memory? No, we don’t. But how do we know how much we can offload? Offloading too much takes too long and offloading too little results in few memory savings. There again isn’t a good general solution. DeepCompile has one."
+  },
+  {
+    "objectID": "articles/deepcompile.html#deepcompile",
+    "href": "articles/deepcompile.html#deepcompile",
+    "title": "DeepCompile",
+    "section": "DeepCompile",
+    "text": "DeepCompile\nFor the last 3 paragraphs I was talking about how we have problems and DeepCompile solves them. Let’s see how.\nHow does DeepCompile work"
+  },
+  {
+    "objectID": "articles/deepcompile.html#optimization-passes",
+    "href": "articles/deepcompile.html#optimization-passes",
+    "title": "DeepCompile",
+    "section": "Optimization passes",
+    "text": "Optimization passes\n\nProactive Prefetching In the Prefetching section, we discussed how all-gather operations can be initialized before the layer is used. This pass does exactly that. Based on the memory usage from the profiler, it attempts to schedule the all-gathers operations as early as possible, while respecting the memory limit. So how would this look in the diagram?\n\n\n\n\nProactive Prefetching\n\n\nFigure 3: Proactive prefetching: The green line represents the new memory usage, it is higher than the original one, but stays below the memory limit. You can see that we prefetch as early as possible, maximizing the memory, but staying below the limit. I think it’s easier to understand this in code, so here’s how it could be implemented:\ndef proactive_prefetching_pass(graph):\n    unscheduled_all_gathers = []\n    new_graph = Graph()\n\n    for node in reversed(graph):\n        if not isinstance(node, AllGather): \n            # if it's not an all-gather, add to the new graph\n            new_graph.append(node)\n        else:\n            # Get memory requirements for all unscheduled all gathers\n            unscheduled_mem_usage = sum([\n                node.memory_usage for node in unscheduled_all_gathers\n            ]) + node.memory_usage # current all gather\n\n            # check if current all gather still fits into the memory limit\n            # profiler.current_memory_usage returns the memory usage at the current step\n            total_required_mem = (  \n                unscheduled_mem_usage + profiler.current_memory_usage(node)\n            ) \n            if total_required_mem &lt; memory_limit:\n                # if it fits, add to the unscheduled all gathers\n                unscheduled_all_gathers.append(node)\n            else:\n                # if it doesn't fit, schedule the current all gather\n                scheduled_all_gathers = fuse(unscheduled_all_gathers)\n                new_graph.append(scheduled_all_gathers)\n                unscheduled_all_gathers = [node]\n\n    # schedule the last unscheduled all gathers\n    last_scheduled_all_gathers = fuse(unscheduled_all_gathers)\n    new_graph.append(last_scheduled_all_gathers)\n    return new_graph\nAlgorithm 1: Proactive Prefetching\nThis pass traverses the graph in reverse order, collects all-gather operations that fit within the memory limit, and as adding another would exceed the memory limit, fuses them together and schedules them, effectively moving them as early as possible. You can notice a fuse operation we haven’t talked about. This function fuses multiple all-gather operations into a so-called bucket. This is done because communication operations involving small data sizes can be inefficient.\n\nSelective Resharding In the Resharding section, we discussed how we can keep the layer in memory after using it in forward, then reusing it in backward. This pass does exactly that. If there is still some memory left after applying the previous pass, we can use this available memory to keep some layers unsharded (i.e. not freeing the memory after the forward pass). We decide on which layers to keep, using the following heuristic:\n\n\\[\n\\frac{\\text{communication\\_time}_{op_i}}{\\text{data\\_size}_{op_i}}\n\\] , where \\(op_i\\) is the i-th operation in the graph and \\(\\text{communication\\_time}_{op_i}\\) is the time taken for its communication and \\(\\text{data\\_size}_{op_i}\\) is the size of the data communicated. The goal is to esentially maximize the communication time saved,\n\nAdaptive Offloading\n\nAgain, this pass is very simple, DeepCompile basically detects if we’re lacking memory, and if so, it partially offloads the optimizer state to the CPU. When memory is low enough, it starts reloading it back to the GPU. This way, we don’t go OOM, however, we also don’t waste time on transferring data to the CPU and back."
+  },
+  {
+    "objectID": "articles/deepcompile.html#conclusion",
+    "href": "articles/deepcompile.html#conclusion",
+    "title": "DeepCompile",
+    "section": "Conclusion",
+    "text": "Conclusion"
   }
 ]
