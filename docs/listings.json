@@ -2,8 +2,13 @@
   {
     "listing": "/index.html",
     "items": [
+      "/articles/deepcompile.html",
       "/articles/quantization-aware-training.html"
     ]
+  },
+  {
+    "listing": "/articles/deepcompile.html",
+    "items": []
   },
   {
     "listing": "/articles/quantization-aware-training.html",
