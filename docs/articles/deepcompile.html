@@ -353,17 +353,17 @@ Note
 </ol>
 <p><span class="math display">\[
 \frac{\text{communication\_time}_{op_i}}{\text{data\_size}_{op_i}}
-\]</span> , where <span class="math inline">\(op_i\)</span> is the <code>i</code>-th operation in the graph and <span class="math inline">\(\text{communication\_time}_{op_i}\)</span> is the time taken for its communication and <span class="math inline">\(\text{data\_size}_{op_i}\)</span> is the size of the data communicated. The goal is to esentially maximize the communication time saved,</p>
+\]</span> , where <span class="math inline">\(op_i\)</span> is the <code>i</code>-th operation in the graph and <span class="math inline">\(\text{communication\_time}_{op_i}\)</span> is the time taken for its communication and <span class="math inline">\(\text{data\_size}_{op_i}\)</span> is the size of the data communicated. The goal is to esentially maximize the communication time saved, while minimizing the memory usage.</p>
 <ol start="3" type="1">
 <li><strong>Adaptive Offloading</strong></li>
 </ol>
-<p>Again, this pass is very simple, DeepCompile basically detects if we’re lacking memory, and if so, it partially offloads the optimizer state to the CPU. When memory is low enough, it starts reloading it back to the GPU. This way, we don’t go OOM, however, we also don’t waste time on transferring data to the CPU and back.</p>
+<p>Again, this pass is very simple, DeepCompile basically detects if we’re lacking memory, and if so, it partially offloads the optimizer state to the CPU. When sufficient memory becomes available again, it begins reloading the state back to the GPU. This way, we don’t go OOM, however, we avoid unecessary time spent transferring data to the CPU and back.</p>
 </section>
 </section>
 <section id="conclusion" class="level1">
 <h1>Conclusion</h1>
-<p>This is my simplified summary of the DeepCompile optimizations. You can check the original paper <a href="https://arxiv.org/pdf/2504.09983">here</a>, I really reccomend reading it (I haven’t noticed it and read the full <a href="https://github.com/deepspeedai/DeepSpeed/pull/7154">PR</a> implementing the compiler first lol). To summarize, these optimizations are possible due to making communication operations first class citizens in the IR, this enables the compiler to optimize these operations.</p>
-<p>Heuristics for these passes are based on the memory usage and time spent, which is gathered by smart usage of the profiler. Also a small warning: This method doesn’t heavily decrease the memory usage (usually), it’s more about optimizing throughput and speed of the training loop (which it is really good at).</p>
+<p>This is my simplified summary of the DeepCompile optimizations. You can check the original paper <a href="https://arxiv.org/pdf/2504.09983">here</a>, I really reccommend reading it (Which I initially missed, reading the underlying <a href="https://github.com/deepspeedai/DeepSpeed/pull/7154">PR</a> implementing the compiler first lol). To summarize, these optimizations are possible due to making communication operations first class citizens in the IR, this enables the compiler to optimize these operations.</p>
+<p>The heuristics guiding these passes rely on memory usage timing information, which is gathered by sophisticated profiling. A small caveat to note: This method typically doesn’t drastically reduce peak memory usage; instead, its primary benefit lies in optimizing the training loop’s throughput and speed, areas where it excels</p>
 
 
 
