@@ -87,6 +87,8 @@ $$
 Y = \text{FFN}(X) = \text{ReLU}(XW_1)W_2
 $$
 
+#TODO Visualization
+
 ### Self-Attention
 
 Self-attention might seem a bit tricky at first, though it is actually quite simple and natural. We split attention column-wise, making sure each GPU gets a single attention head. Then we split the output projection row-wise.
@@ -94,6 +96,8 @@ Self-attention might seem a bit tricky at first, though it is actually quite sim
 $$
 Y = \text{Dropout}(\text{Self-Attention}(X)W_O)
 $$
+
+#TODO Visualization
 
 ## 2b. Sequence Parallelism
 
