@@ -1,0 +1,148 @@
+---
+layout: default
+title: Tensor Parallelism in Transformers
+description: A guide to tensor parallelism in transformers
+date: 2025-04-25
+---
+
+## 1. Introduction
+
+With the advent of large language (and now multi-modal) models, there is a growing need for efficient ways to train and serve these models. Models with 100s of billions of parameters are not uncommon and those do not fit into a single GPU.
+Tensor parallelism is one of the techniques that can be used to help with this problem. This article will cover the basics of tensor parallelism, how it works and most importantly, how you can use predefined tensor parallelism APIs in 🤗 Transformers.
+
+## 2a. How does tensor parallelism work?
+
+At its core, tensor parallelism involves partitioning the model's weights across multiple devices. Let's consider a simple matrix multiplication, $Y = XW$, which is a fundamental operation in neural networks.
+
+### Column-wise Partitioning
+
+1) We split the weight matrix $W$ column-wise across two GPUs, where $W_1$ resides on GPU 1 and $W_2$ on GPU 2. 
+
+$$
+W = \begin{bmatrix} W_1 & W_2 \end{bmatrix}
+$$
+
+2) The input matrix $X$ is broadcast to both GPUs (each GPU gets a full copy of $X$).
+
+$$
+Y = XW = X \begin{bmatrix} W_1 & W_2 \end{bmatrix} = \begin{bmatrix} XW_1 & XW_2 \end{bmatrix} = \begin{bmatrix} Y_1 & Y_2 \end{bmatrix}
+$$
+
+3) Each GPU computes a part of the output matrix $Y$.
+
+$$
+Y_1 = XW_1 \quad \text{and} \quad Y_2 = XW_2
+$$
+
+4) The final result $Y$ is obtained by concatenating $Y_1$ and $Y_2$ along the column dimension.
+
+$$
+Y = \begin{bmatrix} Y_1 & Y_2 \end{bmatrix}
+$$
+
+#TODO Visualization
+
+### Row-wise Partitioning
+
+1) We split the input matrix $X$ column-wise across two GPUs, where $X_1$ resides on GPU 1 and $X_2$ on GPU 2.
+
+$$
+X = \begin{bmatrix} X_1 & X_2 \end{bmatrix}
+$$
+
+2) The weight matrix $W$ is split row-wise, where $W_1$ resides on GPU 1 and $W_2$ on GPU 2.
+
+$$
+W = \begin{bmatrix} W_1 \\ W_2 \end{bmatrix}
+$$
+
+3) Each GPU computes a part of the output matrix $Y$.
+
+$$
+Y_1 = X_1W_1 \quad \text{and} \quad Y_2 = X_2W_2
+$$
+
+4) The final result $Y$ is obtained by element-wise addition of $Y_1$ and $Y_2$.
+
+$$
+Y = Y_1 + Y_2
+$$
+
+#TODO Visualization
+
+This approach can get scaled to any number of GPUs by simply increasing the number of partitions. Usual approach is to apply column-wise partitioning first, then row-wise partitioning.
+This way, we can reduce the communication overhead between GPUs. You can see this in the image below: We do not to do anything extra after the column-wise partitioning, it conveniently splits the input across GPUs, just as row-wise partitioning needs it.
+
+
+## Tensor Parallelism for transformer models
+
+Average transformer architecture consists of multiple layers, each containing a self-attention and a feed-forward network. We would like to apply tensor parallelism to each of these.
+As mentioned earlier, we can apply column-wise partitioning first, then row-wise partitioning.
+
+### Feed-Forward Network
+
+Applying tensor parallelism to feed-forward network is straightforward. We can apply column-wise partitioning first, then row-wise partitioning. ReLU or other activation functions are applied element-wise - we don't need any extra communication here.
+
+$$
+Y = \text{FFN}(X) = \text{ReLU}(XW_1)W_2
+$$
+
+### Self-Attention
+
+Self-attention might seem a bit tricky at first, though it is actually quite simple and natural. We split attention column-wise, making sure each GPU gets a single attention head. Then we split the output projection row-wise.
+
+$$
+Y = \text{Dropout}(\text{Self-Attention}(X)W_O)
+$$
+
+## 2b. Sequence Parallelism
+
+TODO! Should we discuss sequence parallelism? Used in some models (LLAMA4) - might be interesting to mention.
+
+## 3. Using 🤗 Transformers
+
+All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, Torch and 🤗 Transformers have got you covered! 
+With PyTorch's `torch.distributed` and `DTensor` it's very simple to implement tensor parallelism, though it still requires manual configuration for each model.
+This is where 🤗 Transformers comes in. It provides with tensor parallelism pre-configured for some popular models, also providing a simple way to implement it for any other model.
+
+### 🤗 Transformers Tensor Parallelism
+
+Let's take a look at how we can use 🤗 Transformers' tensor parallelism.
+
+```python
+from transformers import AutoModelForCausalLM
+
+# model_id = "meta-llama/Meta-Llama-3-8B-Instruct" # uncomment for smaller number of GPUs
+model_id = "meta-llama/Llama-4-Scout-17B-16E-Instruct" # better to visualize
+
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, tp_plan="auto)
+
+print(model._tp_plan)
+```
+
+This will load the model with tensor parallelism pre-configured for the best performance. The model has an attribute `_tp_plan` which contains information about the tensor parallelism plan, running the above with
+
+```bash
+torchrun --nproc_per_node=8 main.py
+```
+
+will give a result such as:
+```python
+{
+    "layer.*.self_attn.q_proj": "colwise",
+    "layer.*.self_attn.k_proj": "colwise",
+    "layer.*.self_attn.v_proj": "colwise",
+    "layer.*.self_attn.o_proj": "rowwise",
+    ...
+}
+```
+
+This tells us that the query projection is partitioned column-wise, the key and value projections are partitioned column-wise and the output projection is partitioned row-wise. The model is directly loaded and configured with this plan.
+
+### TODO
+- Supported layer types (`src/transformers/integrations/tensor_parallel.py`) - mostly cover replicated, why local and packed
+- Support own models 
+- Should we first implement it in a stable API or just showcase the current way to do it (setting `model.config.tp_plan` and `supports_tp`)?
+- Supported models
+- Training/Inference (Accelerate for training)
+

@@ -6,8 +6,10 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="dcterms.date" content="2025-04-25">
+<meta name="description" content="A guide to tensor parallelism in transformers">
 
-<title>Matej Sirovatka</title>
+<title>Tensor Parallelism in Transformers – Matej Sirovatka</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,27 +22,61 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { display: inline-block; text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<script src="site_libs/quarto-listing/list.min.js"></script>
-<script src="site_libs/quarto-listing/quarto-listing.js"></script>
-<script src="site_libs/quarto-html/quarto.js"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-549806ee2085284f45b00abea8c6df48.css" rel="stylesheet" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-c617a82da2177856a622e6615d2e6261.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-listing/list.min.js"></script>
+<script src="../site_libs/quarto-listing/quarto-listing.js"></script>
+<script src="../site_libs/quarto-html/quarto.js"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-549806ee2085284f45b00abea8c6df48.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-c617a82da2177856a622e6615d2e6261.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -78,9 +114,9 @@ ul.task-list li input[type="checkbox"] {
     }
 
     const options = {
-      valueNames: ['listing-date','listing-title','listing-author','listing-image','listing-description',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
+      valueNames: [{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
       
-      searchColumns: ["listing-date","listing-title","listing-author","listing-image","listing-description"],
+      searchColumns: [],
     };
 
     window['quarto-listings'] = window['quarto-listings'] || {};
@@ -137,7 +173,7 @@ window.Quarto = {
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="./index.html">
+    <a class="navbar-brand" href="../index.html">
     <span class="navbar-title">Matej Sirovatka</span>
     </a>
   </div>
@@ -148,7 +184,7 @@ window.Quarto = {
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link active" href="./index.html" aria-current="page"> 
+    <a class="nav-link" href="../index.html"> 
 <span class="menu-text">Home</span></a>
   </li>  
 </ul>
@@ -164,22 +200,160 @@ window.Quarto = {
 <!-- margin-sidebar -->
     
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"></header>
+<main class="content" id="quarto-document-content">
 
-
-
-
-<section id="about" class="level1">
-<h1>About</h1>
-<p>My name is Matej, but everyone calls me Siro. I’m a student of Artificial Intelligence and Machine Learning @ Brno University of Technology.</p>
-<p>I work at 🤗 Hugging Face, where you can mostly find me working on distributed training and inference in <a href="https://github.com/huggingface/accelerate">accelerate</a> and <a href="https://github.com/huggingface/transformers">transformers</a>. I’m also one of the core maintainers of <a href="https://github.com/gpu-mode/discord-cluster-manager">Cluster Bot</a>.</p>
-<p>As you might have guessed, I’m mostly interested in AI and where it intersects with systems programming. I liked AI before, but I was getting more and more annoyed by waiting for my training runs to finish, so I switched to making the runs go <code>brrr</code> 🚀.</p>
-<section id="articles" class="level2">
-<h2 class="anchored" data-anchor-id="articles">Articles</h2>
-<p>When I feel like it, I like to write about random topics from the world of AI and HPC. If any of this interests you, I believe you can find something useful below. Anything from chip design to distributed training…</p>
-<div class="{{#posts-listing}}">
-
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Tensor Parallelism in Transformers</h1>
 </div>
+
+<div>
+  <div class="description">
+    A guide to tensor parallelism in transformers
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 25, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">1. Introduction</h2>
+<p>With the advent of large language (and now multi-modal) models, there is a growing need for efficient ways to train and serve these models. Models with 100s of billions of parameters are not uncommon and those do not fit into a single GPU. Tensor parallelism is one of the techniques that can be used to help with this problem. This article will cover the basics of tensor parallelism, how it works and most importantly, how you can use predefined tensor parallelism APIs in 🤗 Transformers.</p>
+</section>
+<section id="a.-how-does-tensor-parallelism-work" class="level2">
+<h2 class="anchored" data-anchor-id="a.-how-does-tensor-parallelism-work">2a. How does tensor parallelism work?</h2>
+<p>At its core, tensor parallelism involves partitioning the model’s weights across multiple devices. Let’s consider a simple matrix multiplication, <span class="math inline">\(Y = XW\)</span>, which is a fundamental operation in neural networks.</p>
+<section id="column-wise-partitioning" class="level3">
+<h3 class="anchored" data-anchor-id="column-wise-partitioning">Column-wise Partitioning</h3>
+<ol type="1">
+<li>We split the weight matrix <span class="math inline">\(W\)</span> column-wise across two GPUs, where <span class="math inline">\(W_1\)</span> resides on GPU 1 and <span class="math inline">\(W_2\)</span> on GPU 2.</li>
+</ol>
+<p><span class="math display">\[
+W = \begin{bmatrix} W_1 &amp; W_2 \end{bmatrix}
+\]</span></p>
+<ol start="2" type="1">
+<li>The input matrix <span class="math inline">\(X\)</span> is broadcast to both GPUs (each GPU gets a full copy of <span class="math inline">\(X\)</span>).</li>
+</ol>
+<p><span class="math display">\[
+Y = XW = X \begin{bmatrix} W_1 &amp; W_2 \end{bmatrix} = \begin{bmatrix} XW_1 &amp; XW_2 \end{bmatrix} = \begin{bmatrix} Y_1 &amp; Y_2 \end{bmatrix}
+\]</span></p>
+<ol start="3" type="1">
+<li>Each GPU computes a part of the output matrix <span class="math inline">\(Y\)</span>.</li>
+</ol>
+<p><span class="math display">\[
+Y_1 = XW_1 \quad \text{and} \quad Y_2 = XW_2
+\]</span></p>
+<ol start="4" type="1">
+<li>The final result <span class="math inline">\(Y\)</span> is obtained by concatenating <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span> along the column dimension.</li>
+</ol>
+<p><span class="math display">\[
+Y = \begin{bmatrix} Y_1 &amp; Y_2 \end{bmatrix}
+\]</span></p>
+<p>#TODO Visualization</p>
+</section>
+<section id="row-wise-partitioning" class="level3">
+<h3 class="anchored" data-anchor-id="row-wise-partitioning">Row-wise Partitioning</h3>
+<ol type="1">
+<li>We split the input matrix <span class="math inline">\(X\)</span> column-wise across two GPUs, where <span class="math inline">\(X_1\)</span> resides on GPU 1 and <span class="math inline">\(X_2\)</span> on GPU 2.</li>
+</ol>
+<p><span class="math display">\[
+X = \begin{bmatrix} X_1 &amp; X_2 \end{bmatrix}
+\]</span></p>
+<ol start="2" type="1">
+<li>The weight matrix <span class="math inline">\(W\)</span> is split row-wise, where <span class="math inline">\(W_1\)</span> resides on GPU 1 and <span class="math inline">\(W_2\)</span> on GPU 2.</li>
+</ol>
+<p><span class="math display">\[
+W = \begin{bmatrix} W_1 \\ W_2 \end{bmatrix}
+\]</span></p>
+<ol start="3" type="1">
+<li>Each GPU computes a part of the output matrix <span class="math inline">\(Y\)</span>.</li>
+</ol>
+<p><span class="math display">\[
+Y_1 = X_1W_1 \quad \text{and} \quad Y_2 = X_2W_2
+\]</span></p>
+<ol start="4" type="1">
+<li>The final result <span class="math inline">\(Y\)</span> is obtained by element-wise addition of <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span>.</li>
+</ol>
+<p><span class="math display">\[
+Y = Y_1 + Y_2
+\]</span></p>
+<p>#TODO Visualization</p>
+<p>This approach can get scaled to any number of GPUs by simply increasing the number of partitions. Usual approach is to apply column-wise partitioning first, then row-wise partitioning. This way, we can reduce the communication overhead between GPUs. You can see this in the image below: We do not to do anything extra after the column-wise partitioning, it conveniently splits the input across GPUs, just as row-wise partitioning needs it.</p>
+</section>
+</section>
+<section id="tensor-parallelism-for-transformer-models" class="level2">
+<h2 class="anchored" data-anchor-id="tensor-parallelism-for-transformer-models">Tensor Parallelism for transformer models</h2>
+<p>Average transformer architecture consists of multiple layers, each containing a self-attention and a feed-forward network. We would like to apply tensor parallelism to each of these. As mentioned earlier, we can apply column-wise partitioning first, then row-wise partitioning.</p>
+<section id="feed-forward-network" class="level3">
+<h3 class="anchored" data-anchor-id="feed-forward-network">Feed-Forward Network</h3>
+<p>Applying tensor parallelism to feed-forward network is straightforward. We can apply column-wise partitioning first, then row-wise partitioning. ReLU or other activation functions are applied element-wise - we don’t need any extra communication here.</p>
+<p><span class="math display">\[
+Y = \text{FFN}(X) = \text{ReLU}(XW_1)W_2
+\]</span></p>
+</section>
+<section id="self-attention" class="level3">
+<h3 class="anchored" data-anchor-id="self-attention">Self-Attention</h3>
+<p>Self-attention might seem a bit tricky at first, though it is actually quite simple and natural. We split attention column-wise, making sure each GPU gets a single attention head. Then we split the output projection row-wise.</p>
+<p><span class="math display">\[
+Y = \text{Dropout}(\text{Self-Attention}(X)W_O)
+\]</span></p>
+</section>
+</section>
+<section id="b.-sequence-parallelism" class="level2">
+<h2 class="anchored" data-anchor-id="b.-sequence-parallelism">2b. Sequence Parallelism</h2>
+<p>TODO! Should we discuss sequence parallelism? Used in some models (LLAMA4) - might be interesting to mention.</p>
+</section>
+<section id="using-transformers" class="level2">
+<h2 class="anchored" data-anchor-id="using-transformers">3. Using 🤗 Transformers</h2>
+<p>All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, Torch and 🤗 Transformers have got you covered! With PyTorch’s <code>torch.distributed</code> and <code>DTensor</code> it’s very simple to implement tensor parallelism, though it still requires manual configuration for each model. This is where 🤗 Transformers comes in. It provides with tensor parallelism pre-configured for some popular models, also providing a simple way to implement it for any other model.</p>
+<section id="transformers-tensor-parallelism" class="level3">
+<h3 class="anchored" data-anchor-id="transformers-tensor-parallelism">🤗 Transformers Tensor Parallelism</h3>
+<p>Let’s take a look at how we can use 🤗 Transformers’ tensor parallelism.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForCausalLM</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># model_id = "meta-llama/Meta-Llama-3-8B-Instruct" # uncomment for smaller number of GPUs</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> <span class="st">"meta-llama/Llama-4-Scout-17B-16E-Instruct"</span> <span class="co"># better to visualize</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(model_id, torch_dtype<span class="op">=</span>torch.bfloat16, tp_plan<span class="op">=</span><span class="st">"auto)</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="er">print</span>(model._tp_plan)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This will load the model with tensor parallelism pre-configured for the best performance. The model has an attribute <code>_tp_plan</code> which contains information about the tensor parallelism plan, running the above with</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">torchrun</span> <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>will give a result such as:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.q_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.k_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.v_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.o_proj"</span>: <span class="st">"rowwise"</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This tells us that the query projection is partitioned column-wise, the key and value projections are partitioned column-wise and the output projection is partitioned row-wise. The model is directly loaded and configured with this plan.</p>
+</section>
+<section id="todo" class="level3">
+<h3 class="anchored" data-anchor-id="todo">TODO</h3>
+<ul>
+<li>Supported layer types (<code>src/transformers/integrations/tensor_parallel.py</code>) - mostly cover replicated, why local and packed</li>
+<li>Support own models</li>
+<li>Should we first implement it in a stable API or just showcase the current way to do it (setting <code>model.config.tp_plan</code> and <code>supports_tp</code>)?</li>
+<li>Supported models</li>
+<li>Training/Inference (Accelerate for training)</li>
+</ul>
 
 
 
@@ -188,81 +362,7 @@ window.Quarto = {
 
 <div class="quarto-listing quarto-listing-container-default" id="listing-posts-listing">
 <div class="list quarto-listing-default">
-<div class="quarto-post image-right" data-index="0" data-listing-date-sort="1745532000000" data-listing-file-modified-sort="1745587204284" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="4" data-listing-word-count-sort="776">
-<div class="thumbnail">
-<p><a href="./articles/transformers-tp.html" class="no-external"></a></p><a href="./articles/transformers-tp.html" class="no-external">
-<div class="listing-item-img-placeholder card-img-top" >&nbsp;</div>
-</a><p><a href="./articles/transformers-tp.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./articles/transformers-tp.html" class="no-external">Tensor Parallelism in Transformers</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./articles/transformers-tp.html" class="no-external"></a>
-</div>
-<div class="listing-description">
-<a href="./articles/transformers-tp.html" class="no-external">A guide to tensor parallelism in transformers</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./articles/transformers-tp.html" class="no-external">
-<div class="listing-date">
-Apr 25, 2025
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="1" data-listing-date-sort="1744840800000" data-listing-file-modified-sort="1744935077153" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="10" data-listing-word-count-sort="1869">
-<div class="thumbnail">
-<p><a href="./articles/deepcompile.html" class="no-external"></a></p><a href="./articles/deepcompile.html" class="no-external">
-<p class="card-img-top"><img src="media/deepcompile/zero.png" alt="ZeRO training loop"  class="thumbnail-image card-img"/></p>
-</a><p><a href="./articles/deepcompile.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./articles/deepcompile.html" class="no-external">DeepCompile</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./articles/deepcompile.html" class="no-external"></a>
-</div>
-<div class="listing-description">
-<a href="./articles/deepcompile.html" class="no-external">DeepCompile - make your distributed training faster</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./articles/deepcompile.html" class="no-external">
-<div class="listing-date">
-Apr 17, 2025
-</div>
-</a>
-</div>
-</div>
-<div class="quarto-post image-right" data-index="2" data-listing-date-sort="1734562800000" data-listing-file-modified-sort="1744934678778" data-listing-date-modified-sort="NaN" data-listing-reading-time-sort="16" data-listing-word-count-sort="3079">
-<div class="thumbnail">
-<p><a href="./articles/quantization-aware-training.html" class="no-external"></a></p><a href="./articles/quantization-aware-training.html" class="no-external">
-<p class="card-img-top"><img src="media/quantization-aware-training/m.png" alt="Min and Max Calculation"  class="thumbnail-image card-img"/></p>
-</a><p><a href="./articles/quantization-aware-training.html" class="no-external"></a></p>
-</div>
-<div class="body">
-<h3 class="no-anchor listing-title">
-<a href="./articles/quantization-aware-training.html" class="no-external">Quantization Aware Training</a>
-</h3>
-<div class="listing-subtitle">
-<a href="./articles/quantization-aware-training.html" class="no-external"></a>
-</div>
-<div class="listing-description">
-<a href="./articles/quantization-aware-training.html" class="no-external">In-depth guide to implementing quantization aware training in PyTorch</a>
-</div>
-</div>
-<div class="metadata">
-<a href="./articles/quantization-aware-training.html" class="no-external">
-<div class="listing-date">
-Dec 19, 2024
-</div>
-</a>
-</div>
-</div>
+
 </div>
 <div class="listing-no-matching d-none">
 No matching items
