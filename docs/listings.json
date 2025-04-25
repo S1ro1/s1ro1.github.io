@@ -2,12 +2,17 @@
   {
     "listing": "/index.html",
     "items": [
+      "/articles/transformers-tp.html",
       "/articles/deepcompile.html",
       "/articles/quantization-aware-training.html"
     ]
   },
   {
     "listing": "/articles/deepcompile.html",
+    "items": []
+  },
+  {
+    "listing": "/articles/transformers-tp.html",
     "items": []
   },
   {
