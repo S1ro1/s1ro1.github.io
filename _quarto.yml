@@ -26,3 +26,5 @@ listing:
     contents: articles
     type: default 
     sort: "date desc"
+    exclude:
+      title: "Tensor Parallelism in Transformers"

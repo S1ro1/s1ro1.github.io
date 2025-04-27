@@ -363,7 +363,7 @@ Note
 <section id="conclusion" class="level1">
 <h1>Conclusion</h1>
 <p>This is my simplified summary of the DeepCompile optimizations. You can check the original paper <a href="https://arxiv.org/pdf/2504.09983">here</a>, I really reccommend reading it (Which I initially missed, reading the underlying <a href="https://github.com/deepspeedai/DeepSpeed/pull/7154">PR</a> implementing the compiler first lol). To summarize, these optimizations are possible due to making communication operations first class citizens in the IR, this enables the compiler to optimize these operations.</p>
-<p>The heuristics guiding these passes rely on memory usage timing information, which is gathered by sophisticated profiling. A small caveat to note: This method typically doesn’t drastically reduce peak memory usage; instead, its primary benefit lies in optimizing the training loop’s throughput and speed, areas where it excels</p>
+<p>The heuristics guiding these passes rely on memory usage timing information, which is gathered by sophisticated profiling. A small caveat to note: This method typically doesn’t drastically reduce peak memory usage; instead, its primary benefit lies in optimizing the training loop’s throughput and speed, areas where it excels.</p>
 
 
 

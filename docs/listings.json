@@ -2,7 +2,6 @@
   {
     "listing": "/index.html",
     "items": [
-      "/articles/transformers-tp.html",
       "/articles/deepcompile.html",
       "/articles/quantization-aware-training.html"
     ]
