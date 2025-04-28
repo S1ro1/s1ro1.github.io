@@ -238,17 +238,28 @@ window.Quarto = {
 </section>
 <section id="a.-how-does-tensor-parallelism-work" class="level2">
 <h2 class="anchored" data-anchor-id="a.-how-does-tensor-parallelism-work">2a. How does tensor parallelism work?</h2>
-<p>At its core, tensor parallelism involves partitioning the model’s weights across multiple devices. Let’s consider a simple matrix multiplication, <span class="math inline">\(Y = XW\)</span>, which is a fundamental operation in neural networks.</p>
+<p>At its core, tensor parallelism involves partitioning the model’s weights across multiple devices. Let’s consider a simple matrix multiplication, <span class="math inline">\(Y = XW\)</span>, which is a fundamental operation in neural networks. We will be considering common transformer architectures, so the weight matrix <strong><span class="math inline">\(W\)</span></strong> is of shape <strong><span class="math inline">\(d\_model \times d\_model\)</span></strong> (For simplicity, we will assume square weight matrices, but this is not a requirement for tensor parallelism and doesn’t change anything) and the input matrix <strong><span class="math inline">\(X\)</span></strong> is of shape <strong><span class="math inline">\(batch\_size \times d\_model \times seq\_len\)</span></strong>. Again, we can ignore the batch size for now, as that will only cause duplication of the following operations across its dimension.</p>
+<p>We can express the shapes as follows: <span class="math display">\[
+W \in \mathbb{R}^{d\_model \times d\_model}
+\]</span></p>
+<p><span class="math display">\[
+X \in \mathbb{R}^{batch\_size \times d\_model \times seq\_len}
+\]</span></p>
+<p><span class="math display">\[
+Y \in \mathbb{R}^{batch\_size \times d\_model \times seq\_len}
+\]</span></p>
 <section id="column-wise-partitioning" class="level3">
 <h3 class="anchored" data-anchor-id="column-wise-partitioning">Column-wise Partitioning</h3>
 <ol type="1">
-<li>We split the weight matrix <span class="math inline">\(W\)</span> column-wise across two GPUs, where <span class="math inline">\(W_1\)</span> resides on GPU 1 and <span class="math inline">\(W_2\)</span> on GPU 2.</li>
+<li>The weight matrix <span class="math inline">\(W\)</span> is split column-wise across two GPUs, where <span class="math inline">\(W_1\)</span> resides on GPU 1 and <span class="math inline">\(W_2\)</span> on GPU 2. This doesn’t require any communication, as it is done at initialization. <span class="math display">\[
+W = \begin{bmatrix} W_1 &amp; W_2 \end{bmatrix}
+\]</span></li>
 </ol>
 <p><span class="math display">\[
-W = \begin{bmatrix} W_1 &amp; W_2 \end{bmatrix}
+W_1, W_2 \in \mathbb{R}^{d\_model \times \frac{d\_model}{2}}
 \]</span></p>
 <ol start="2" type="1">
-<li>The input matrix <span class="math inline">\(X\)</span> is broadcast to both GPUs (each GPU gets a full copy of <span class="math inline">\(X\)</span>).</li>
+<li>The input matrix <span class="math inline">\(X\)</span> is broadcast to both GPUs (each GPU gets a full copy of <span class="math inline">\(X\)</span>). (<code>Broadcast</code> operation)</li>
 </ol>
 <p><span class="math display">\[
 Y = XW = X \begin{bmatrix} W_1 &amp; W_2 \end{bmatrix} = \begin{bmatrix} XW_1 &amp; XW_2 \end{bmatrix} = \begin{bmatrix} Y_1 &amp; Y_2 \end{bmatrix}
@@ -259,27 +270,35 @@ Y = XW = X \begin{bmatrix} W_1 &amp; W_2 \end{bmatrix} = \begin{bmatrix} XW_1 &a
 <p><span class="math display">\[
 Y_1 = XW_1 \quad \text{and} \quad Y_2 = XW_2
 \]</span></p>
+<p><span class="math display">\[
+Y_1, Y_2 \in \mathbb{R}^{batch\_size \times d\_model \times \frac{seq\_len}{2}}
+\]</span></p>
 <ol start="4" type="1">
-<li>The final result <span class="math inline">\(Y\)</span> is obtained by concatenating <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span> along the column dimension.</li>
+<li>The final result <span class="math inline">\(Y\)</span> is obtained by concatenating <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span> along the column dimension. (<code>AllGather</code> operation)</li>
 </ol>
 <p><span class="math display">\[
 Y = \begin{bmatrix} Y_1 &amp; Y_2 \end{bmatrix}
 \]</span></p>
-<p>#TODO Visualization</p>
 </section>
 <section id="row-wise-partitioning" class="level3">
 <h3 class="anchored" data-anchor-id="row-wise-partitioning">Row-wise Partitioning</h3>
 <ol type="1">
-<li>We split the input matrix <span class="math inline">\(X\)</span> column-wise across two GPUs, where <span class="math inline">\(X_1\)</span> resides on GPU 1 and <span class="math inline">\(X_2\)</span> on GPU 2.</li>
+<li>We split the input matrix <span class="math inline">\(X\)</span> column-wise across two GPUs, where <span class="math inline">\(X_1\)</span> resides on GPU 1 and <span class="math inline">\(X_2\)</span> on GPU 2. (<code>Scatter</code> operation)</li>
 </ol>
 <p><span class="math display">\[
 X = \begin{bmatrix} X_1 &amp; X_2 \end{bmatrix}
 \]</span></p>
+<p><span class="math display">\[
+X_1, X_2 \in \mathbb{R}^{batch\_size \times seq\_len \times \frac{d\_model}{2}}
+\]</span></p>
 <ol start="2" type="1">
-<li>The weight matrix <span class="math inline">\(W\)</span> is split row-wise, where <span class="math inline">\(W_1\)</span> resides on GPU 1 and <span class="math inline">\(W_2\)</span> on GPU 2.</li>
+<li>The weight matrix <span class="math inline">\(W\)</span> is split row-wise, where <span class="math inline">\(W_1\)</span> resides on GPU 1 and <span class="math inline">\(W_2\)</span> on GPU 2. Again, this doesn’t require any communication, as each GPU only gets its part of the weight matrix at initialization.</li>
 </ol>
 <p><span class="math display">\[
 W = \begin{bmatrix} W_1 \\ W_2 \end{bmatrix}
+\]</span></p>
+<p><span class="math display">\[
+W_1, W_2 \in \mathbb{R}^{\frac{d\_model}{2} \times d\_model}
 \]</span></p>
 <ol start="3" type="1">
 <li>Each GPU computes a part of the output matrix <span class="math inline">\(Y\)</span>.</li>
@@ -287,14 +306,29 @@ W = \begin{bmatrix} W_1 \\ W_2 \end{bmatrix}
 <p><span class="math display">\[
 Y_1 = X_1W_1 \quad \text{and} \quad Y_2 = X_2W_2
 \]</span></p>
+<p><span class="math display">\[
+Y_1, Y_2 \in \mathbb{R}^{batch\_size \times seq\_len \times d\_model}
+\]</span></p>
 <ol start="4" type="1">
-<li>The final result <span class="math inline">\(Y\)</span> is obtained by element-wise addition of <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span>.</li>
+<li>The final result <span class="math inline">\(Y\)</span> is obtained by element-wise addition of <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span>. (<code>AllReduce</code> operation)</li>
 </ol>
 <p><span class="math display">\[
 Y = Y_1 + Y_2
 \]</span></p>
 <p>#TODO Visualization</p>
-<p>This approach can get scaled to any number of GPUs by simply increasing the number of partitions. Usual approach is to apply column-wise partitioning first, then row-wise partitioning. This way, we can reduce the communication overhead between GPUs. You can see this in the image below: We do not to do anything extra after the column-wise partitioning, it conveniently splits the input across GPUs, just as row-wise partitioning needs it.</p>
+</section>
+<section id="bias" class="level3">
+<h3 class="anchored" data-anchor-id="bias">Bias</h3>
+<p>Bias is a vector of shape <span class="math inline">\(d\_model\)</span> and is added to the output after the matrix multiplication. You could notice that the previous equations don’t consider bias at all. Handling bias is pretty simple, we just have to do the following:</p>
+<ul>
+<li><strong>Column-wise partitioning</strong>: For column-wise partitioning, <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span> were half the size of the original shape, therefore bias is split across GPUs, each GPU gets a vector <span class="math inline">\(B_i \in \mathbb{R}^{\frac{d\_model}{2}}\)</span></li>
+<li><strong>Row-wise partitioning</strong>: Recall that <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span> were already the original shape, therefore bias is replicated across GPUs, each GPU gets a vector <span class="math inline">\(B_i \in \mathbb{R}^{d\_model}\)</span> (each GPU gets a full copy of the bias)</li>
+</ul>
+</section>
+<section id="applying-tensor-parallelism" class="level3">
+<h3 class="anchored" data-anchor-id="applying-tensor-parallelism">Applying tensor parallelism</h3>
+<p>Column-wise partitioning compliments row-wise partitioning very well. Remember that row-wise partitioning requires the input to split column-wise, which is exactly the output of column-wise partitioning. This way, concatenation of <span class="math inline">\(Y_1\)</span> and <span class="math inline">\(Y_2\)</span> after the multiplication step of column-wise partitioning is not requireed - saving communication. After this, row-wise can be applied to each of the shards from the previous step, only requiring weights to be split across GPUs.</p>
+<p>#TODO Visualization</p>
 </section>
 </section>
 <section id="tensor-parallelism-for-transformer-models" class="level2">
@@ -302,9 +336,9 @@ Y = Y_1 + Y_2
 <p>Average transformer architecture consists of multiple layers, each containing a self-attention and a feed-forward network. We would like to apply tensor parallelism to each of these. As mentioned earlier, we can apply column-wise partitioning first, then row-wise partitioning.</p>
 <section id="feed-forward-network" class="level3">
 <h3 class="anchored" data-anchor-id="feed-forward-network">Feed-Forward Network</h3>
-<p>Applying tensor parallelism to feed-forward network is straightforward. We can apply column-wise partitioning first, then row-wise partitioning. ReLU or other activation functions are applied element-wise - we don’t need any extra communication here.</p>
+<p>Applying tensor parallelism to feed-forward network is straightforward. As discussed <a href="#applying-tensor-parallelism">ealier</a>, column-wise partitioning followed by row-wise partitioning is a natural fit and is really easy to apply to Feed-Forward Network. Do not mistake <span class="math inline">\(W1\)</span> and <span class="math inline">\(W2\)</span> for <span class="math inline">\(W_1\)</span> and <span class="math inline">\(W_2\)</span> from the previous sections, <span class="math inline">\(W1\)</span> and <span class="math inline">\(W2\)</span> represent two distinct linear layers, not the same weight matrix split across GPUs.</p>
 <p><span class="math display">\[
-Y = \text{FFN}(X) = \text{ReLU}(XW_1)W_2
+Y = \text{FFN}(X) = \text{ReLU}(XW1)W2
 \]</span></p>
 <p>#TODO Visualization</p>
 </section>
@@ -319,7 +353,23 @@ Y = \text{Dropout}(\text{Self-Attention}(X)W_O)
 </section>
 <section id="b.-sequence-parallelism" class="level2">
 <h2 class="anchored" data-anchor-id="b.-sequence-parallelism">2b. Sequence Parallelism</h2>
-<p>TODO! Should we discuss sequence parallelism? Used in some models (LLAMA4) - might be interesting to mention.</p>
+<p>We will be talking about sequence parallelism as a parallelism technique used together with tensor parallelism, on layers that classical tensor parallelism doesn’t apply to. In particular to LayerNorms and Dropouts. These 2 layers, require full activations to be present for them to be numerically correct.</p>
+<p>As we know, both of these operations require the access to the whole hidden dimension to be applied. We can overcome this by splitting the activations across sequence dimension - henceforth <code>sequence parallelism</code>. In practice, we apply tensor parallelism on layers that aren’t affected by this problem (FFN + Self-Attention), then apply sequence parallelism on the following layers (LayerNorm + Dropout) and we repeat this across all layers, alternating between tensor and sequence parallelism.</p>
+<p>This introduces some extra subtleties in communication, as we need to ensure correct transition between tensor and sequence parallelism regions.</p>
+<ul>
+<li><strong>Tensor Parallel -&gt; Sequence Parallel</strong>: Previously, <code>AllReduce</code> was used on the output of row-wise partition. Now, the outputs also have to be split across GPUs across the sequence dimension after being reduced. This operation is called <code>ReduceScatter</code>.</li>
+<li><strong>Sequence Parallel -&gt; Tensor Parallel</strong>: Each GPU has only part of the activations after the sequence parallel region, meaning it only has a fraction of the tokens (hidden dimension is full). The following tensor parallel region requires full copy of the activations, so an <code>AllGather</code> operation is required, construct the full activations on all GPUs again.</li>
+</ul>
+<section id="some-caveats-to-note" class="level3">
+<h3 class="anchored" data-anchor-id="some-caveats-to-note">Some caveats to note</h3>
+<ul>
+<li>Tensor parallelism requires a lot of communication between GPUs, that’s why it’s usually not used inter-node, but only intra-node, taking advantage of high bandwidth interconnects.</li>
+<li>Bias requires extra handling, different for row-wise vs column-wise partitioning.</li>
+<li>To minimize the communication overhead, column-wise partitioning is applied first, then row-wise partitioning, this way we minimize the amount of data that needs to be sent between GPUs making the approach more efficient.</li>
+<li>Commonly used in conjuction with Sequence Parallelism, as they complement each other very well.</li>
+<li>Can also be used on model embeddings, where row-wise partitioning across vocabulary size is applied.</li>
+</ul>
+</section>
 </section>
 <section id="using-transformers" class="level2">
 <h2 class="anchored" data-anchor-id="using-transformers">3. Using 🤗 Transformers</h2>
