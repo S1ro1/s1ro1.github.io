@@ -252,13 +252,76 @@ Math, as specified before, applies the same.
 
 ## 4. Using 🤗 Transformers
 
-All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, Torch and 🤗 Transformers have got you covered! 
-With PyTorch's `torch.distributed` and `DTensor` it's very simple to implement tensor parallelism, though it still requires manual configuration for each model.
-This is where 🤗 Transformers comes in. It provides with tensor parallelism pre-configured for some popular models, also providing a simple way to implement it for any other model.
+All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, 🤗 Transformers have got you covered! These methods are implemented in [tensor_parallel.py](https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py),
+with `shard_and_distribute_module` being the entrypoint, to prepare a single module with tensor parallelism pre-configured. We provide multiple different paritioning strategies, so let's take a look at them.
+
+1) `ColwiseParallel` - A simple column-wise partitioning, being able to handle both weights and biases, does exactly what we've discussed before.
+2) `RowwiseParallel` - Again, row-wise partitioning as dicussed before, supports weights and biases, on top of that it also supports `nn.Embedding` modules.
+3) `SequenceParallel` - Sequence parallel implementation, for support of `LayerNorm` and `Dropout` layers. Also supports Python implementation of `RMSNorm` (see [this](https://github.com/facebookresearch/llama/blob/main/llama/model.py#L34))
+4) `PackedColwiseParallel` - A variant of column-wise partitioning, however it works on packed weights (i.e. `up_proj` and `gate_proj` being packed together). For more details, see [this comment](https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py#L79-#L108)
+5) `PackedRowwiseParallel` - A variant of row-wise partitioning, works on packed weights, for more details check the comment linked above.
+6) `GatherParallel` - A very simple class, that only makes the outputs of the module to be gathered across devices.
+7) `IsolatedParallel` - This is a special case, where we want to *isolate* the module from the rest of the devices (world). This is used for Experts in MoE layers, basically creating Expert parallelism of sorts.
+
+::: {.callout-warning collapse="true"}
+## Technical implementation details
+
+For readers interested in the details, it's actually quite simple to understand how this works. Let's take a look at the `ColwiseParallel` class.
+
+```python
+class ColwiseParallel(TensorParallelLayer):
+    def __init__(
+        self,
+        *,
+        input_layouts: Optional[Placement] = None,
+        output_layouts: Optional[Placement] = None,
+        use_local_output: bool = True,
+        use_dtensor=True,
+    ):
+        self.input_layouts = (input_layouts or Replicate(),) # The input sharding coming from the previous layer
+        self.output_layouts = (output_layouts or Shard(-1),) # Desired output sharding
+        self.desired_input_layouts = (Replicate(),) # Desired input sharding, inputs should be replicated across GPUs (Broadcast operation)
+        self.use_local_output = use_local_output # True
+        self.use_dtensor = use_dtensor # True
+```
+
+In the `__init__` method, we define these attributes, where `input_layouts` and `output_layouts` describing, how the input and output tensors should be placed on the devices. `desired_input_layouts` is used to specify, how the input *SHOULD* be placed on the devices.
+Then, 2 methods are defined: `_prepare_input_fn` and `_prepare_output_fn`. As you might have guessed, these methods are used to re-distribute the inputs/outputs to the desired layout. This is done via `DTensor`s `redistribute` method, where we can specify the desired placement.
+
+```python
+@staticmethod
+def _prepare_input_fn(input_layouts, desired_input_layouts, mod, inputs, device_mesh):
+    ...
+    return inputs.redistribute(placements=desired_input_layouts, device_mesh=device_mesh)
+```
+
+
+```python
+@staticmethod
+def _prepare_output_fn(output_layouts, use_local_output, mod, outputs, device_mesh):
+    ...
+    return outputs.redistribute(placements=output_layouts, device_mesh=device_mesh)
+```
+
+These methods are then applied as hooks to the module, using PyTorch's `torch.distributed.tensor.distribute_module` function (we have our own implementation that is slightly more efficient, but works the same way).
+It basically registers `_prepare_input_fn` as a pre-forward hook and `_prepare_output_fn` as a forward hook.
+
+```python
+distribute_module(
+    module,
+    device_mesh,
+    partial(self._prepare_input_fn, self.input_layouts, self.desired_input_layouts),
+    partial(self._prepare_output_fn, self.output_layouts, self.use_local_output),
+)
+```
+
+Then, one more important method is required: `partition_tensor`. This method is used to partition the module's weights or biases according to the desired partitioning strategy.
+This implementation does a bit more stuff than just partitioning, being used in a lot of places, but it's main idea is to get the corresponding shard of the parameter, create a `DTensor` from it and return a `nn.Parameter` object.
+See the implementation [here](https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py#L294) for details.
+
+:::
 
 ### 🤗 Transformers Tensor Parallelism
-
-
 
 ```python
 from transformers import AutoModelForCausalLM
@@ -291,8 +354,6 @@ will give a result such as:
 This tells us that the query projection is partitioned column-wise, the key and value projections are partitioned column-wise and the output projection is partitioned row-wise. The model is directly loaded and configured with this plan.
 
 ### TODO
-- Supported layer types (`src/transformers/integrations/tensor_parallel.py`) - mostly cover replicated, why local and packed
-- Support own models 
 - Should we first implement it in a stable API or just showcase the current way to do it (setting `model.config.tp_plan` and `supports_tp`)?
 - Supported models
 - Training/Inference (Accelerate for training)

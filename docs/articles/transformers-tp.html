@@ -420,34 +420,88 @@ Y = \text{Dropout}(\text{Self-Attention}(X)W_O)
 </section>
 <section id="using-transformers" class="level2">
 <h2 class="anchored" data-anchor-id="using-transformers">4. Using 🤗 Transformers</h2>
-<p>All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, Torch and 🤗 Transformers have got you covered! With PyTorch’s <code>torch.distributed</code> and <code>DTensor</code> it’s very simple to implement tensor parallelism, though it still requires manual configuration for each model. This is where 🤗 Transformers comes in. It provides with tensor parallelism pre-configured for some popular models, also providing a simple way to implement it for any other model.</p>
+<p>All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, 🤗 Transformers have got you covered! These methods are implemented in <a href="https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py">tensor_parallel.py</a>, with <code>shard_and_distribute_module</code> being the entrypoint, to prepare a single module with tensor parallelism pre-configured. We provide multiple different paritioning strategies, so let’s take a look at them.</p>
+<ol type="1">
+<li><code>ColwiseParallel</code> - A simple column-wise partitioning, being able to handle both weights and biases, does exactly what we’ve discussed before.</li>
+<li><code>RowwiseParallel</code> - Again, row-wise partitioning as dicussed before, supports weights and biases, on top of that it also supports <code>nn.Embedding</code> modules.</li>
+<li><code>SequenceParallel</code> - Sequence parallel implementation, for support of <code>LayerNorm</code> and <code>Dropout</code> layers. Also supports Python implementation of <code>RMSNorm</code> (see <a href="https://github.com/facebookresearch/llama/blob/main/llama/model.py#L34">this</a>)</li>
+<li><code>PackedColwiseParallel</code> - A variant of column-wise partitioning, however it works on packed weights (i.e.&nbsp;<code>up_proj</code> and <code>gate_proj</code> being packed together). For more details, see <a href="https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py#L79-#L108">this comment</a></li>
+<li><code>PackedRowwiseParallel</code> - A variant of row-wise partitioning, works on packed weights, for more details check the comment linked above.</li>
+<li><code>GatherParallel</code> - A very simple class, that only makes the outputs of the module to be gathered across devices.</li>
+<li><code>IsolatedParallel</code> - This is a special case, where we want to <em>isolate</em> the module from the rest of the devices (world). This is used for Experts in MoE layers, basically creating Expert parallelism of sorts.</li>
+</ol>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Technical implementation details
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p>For readers interested in the details, it’s actually quite simple to understand how this works. Let’s take a look at the <code>ColwiseParallel</code> class.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ColwiseParallel(TensorParallelLayer):</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>        <span class="op">*</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>        input_layouts: Optional[Placement] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        output_layouts: Optional[Placement] <span class="op">=</span> <span class="va">None</span>,</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>        use_local_output: <span class="bu">bool</span> <span class="op">=</span> <span class="va">True</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>        use_dtensor<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    ):</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.input_layouts <span class="op">=</span> (input_layouts <span class="kw">or</span> Replicate(),) <span class="co"># The input sharding coming from the previous layer</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.output_layouts <span class="op">=</span> (output_layouts <span class="kw">or</span> Shard(<span class="op">-</span><span class="dv">1</span>),) <span class="co"># Desired output sharding</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.desired_input_layouts <span class="op">=</span> (Replicate(),) <span class="co"># Desired input sharding, inputs should be replicated across GPUs (Broadcast operation)</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.use_local_output <span class="op">=</span> use_local_output <span class="co"># True</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.use_dtensor <span class="op">=</span> use_dtensor <span class="co"># True</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In the <code>__init__</code> method, we define these attributes, where <code>input_layouts</code> and <code>output_layouts</code> describing, how the input and output tensors should be placed on the devices. <code>desired_input_layouts</code> is used to specify, how the input <em>SHOULD</em> be placed on the devices. Then, 2 methods are defined: <code>_prepare_input_fn</code> and <code>_prepare_output_fn</code>. As you might have guessed, these methods are used to re-distribute the inputs/outputs to the desired layout. This is done via <code>DTensor</code>s <code>redistribute</code> method, where we can specify the desired placement.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="at">@staticmethod</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _prepare_input_fn(input_layouts, desired_input_layouts, mod, inputs, device_mesh):</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> inputs.redistribute(placements<span class="op">=</span>desired_input_layouts, device_mesh<span class="op">=</span>device_mesh)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="at">@staticmethod</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _prepare_output_fn(output_layouts, use_local_output, mod, outputs, device_mesh):</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> outputs.redistribute(placements<span class="op">=</span>output_layouts, device_mesh<span class="op">=</span>device_mesh)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>These methods are then applied as hooks to the module, using PyTorch’s <code>torch.distributed.tensor.distribute_module</code> function (we have our own implementation that is slightly more efficient, but works the same way). It basically registers <code>_prepare_input_fn</code> as a pre-forward hook and <code>_prepare_output_fn</code> as a forward hook.</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>distribute_module(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    module,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    device_mesh,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    partial(<span class="va">self</span>._prepare_input_fn, <span class="va">self</span>.input_layouts, <span class="va">self</span>.desired_input_layouts),</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    partial(<span class="va">self</span>._prepare_output_fn, <span class="va">self</span>.output_layouts, <span class="va">self</span>.use_local_output),</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Then, one more important method is required: <code>partition_tensor</code>. This method is used to partition the module’s weights or biases according to the desired partitioning strategy. This implementation does a bit more stuff than just partitioning, being used in a lot of places, but it’s main idea is to get the corresponding shard of the parameter, create a <code>DTensor</code> from it and return a <code>nn.Parameter</code> object. See the implementation <a href="https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py#L294">here</a> for details.</p>
+</div>
+</div>
+</div>
 <section id="transformers-tensor-parallelism" class="level3">
 <h3 class="anchored" data-anchor-id="transformers-tensor-parallelism">🤗 Transformers Tensor Parallelism</h3>
-<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForCausalLM</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co"># model_id = "meta-llama/Meta-Llama-3-8B-Instruct" # uncomment for smaller number of GPUs</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> <span class="st">"meta-llama/Llama-4-Scout-17B-16E-Instruct"</span> <span class="co"># better to visualize</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(model_id, torch_dtype<span class="op">=</span>torch.bfloat16, tp_plan<span class="op">=</span><span class="st">"auto)</span></span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="er">print</span>(model._tp_plan)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForCausalLM</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="co"># model_id = "meta-llama/Meta-Llama-3-8B-Instruct" # uncomment for smaller number of GPUs</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> <span class="st">"meta-llama/Llama-4-Scout-17B-16E-Instruct"</span> <span class="co"># better to visualize</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(model_id, torch_dtype<span class="op">=</span>torch.bfloat16, tp_plan<span class="op">=</span><span class="st">"auto)</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="er">print</span>(model._tp_plan)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>This will load the model with tensor parallelism pre-configured for the best performance. The model has an attribute <code>_tp_plan</code> which contains information about the tensor parallelism plan, running the above with</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">torchrun</span> <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">torchrun</span> <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>will give a result such as:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.q_proj"</span>: <span class="st">"colwise"</span>,</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.k_proj"</span>: <span class="st">"colwise"</span>,</span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.v_proj"</span>: <span class="st">"colwise"</span>,</span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.o_proj"</span>: <span class="st">"rowwise"</span>,</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    ...</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.q_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.k_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.v_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.o_proj"</span>: <span class="st">"rowwise"</span>,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>This tells us that the query projection is partitioned column-wise, the key and value projections are partitioned column-wise and the output projection is partitioned row-wise. The model is directly loaded and configured with this plan.</p>
 </section>
 <section id="todo" class="level3">
 <h3 class="anchored" data-anchor-id="todo">TODO</h3>
 <ul>
-<li>Supported layer types (<code>src/transformers/integrations/tensor_parallel.py</code>) - mostly cover replicated, why local and packed</li>
-<li>Support own models</li>
 <li>Should we first implement it in a stable API or just showcase the current way to do it (setting <code>model.config.tp_plan</code> and <code>supports_tp</code>)?</li>
 <li>Supported models</li>
 <li>Training/Inference (Accelerate for training)</li>
