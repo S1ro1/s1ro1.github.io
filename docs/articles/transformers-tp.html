@@ -371,30 +371,76 @@ Y = \text{Dropout}(\text{Self-Attention}(X)W_O)
 </ul>
 </section>
 </section>
+<section id="distributed-pytorch-basics" class="level2">
+<h2 class="anchored" data-anchor-id="distributed-pytorch-basics">3. Distributed PyTorch basics</h2>
+<p>As with almost everything these days, PyTorch is the library of choice for this feature. In this section, we will cover some basics of distributed PyTorch and some features you should be familiar with, as they make this all possible. If you know what <code>torch.distributed.ProcessGroup</code>, <code>torch.distributed.DeviceMesh</code> and <code>torch.distributed.DTensor</code> are, you can skip this section and go to the next one.</p>
+<p>PyTorch provides a distributed package that allows you to run PyTorch code across multiple processes, even across multiple machines. In this section, we’ll consider that each process is running on a single GPU, all processes are running on the same machine.</p>
+<section id="process-group" class="level3">
+<h3 class="anchored" data-anchor-id="process-group">Process Group</h3>
+<p>Encapsulating these processes is a <code>torch.distributed.ProcessGroup</code> abstraction. This class ensures communication and synchronization between processes. You should setup the process group, each time you want to run a distributed code.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>rank <span class="op">=</span> <span class="bu">int</span>(os.environ[<span class="st">"RANK"</span>]) <span class="co"># get the rank of the current process, env variable is set by `torchrun`</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>device <span class="op">=</span> torch.device(<span class="ss">f"cuda:</span><span class="sc">{</span>rank<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>torch.cuda.set_device(device) <span class="co"># set the device of the current process</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>torch.distributed.init_process_group(backend<span class="op">=</span><span class="st">"nccl"</span>, device_id<span class="op">=</span>device) <span class="co"># initialize the process group with a communication backend</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This is a snippet to setup the process group for a single machine with multiple GPUs. You need to run this code, using a <code>torchrun</code> command, as such:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">torchrun</span> <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py <span class="co"># This will run the script with 8 processes, each on a different GPU</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>torchrun</code> is a abbrevation of <code>torch.distributed.run</code>, so you can also use it as:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-m</span> torch.distributed.run <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This process group should also be destroyed after the script is finished, as it’s not needed anymore.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> torch.distributed.is_initialized():</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    torch.distributed.destroy_process_group()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="device-mesh" class="level3">
+<h3 class="anchored" data-anchor-id="device-mesh">Device Mesh</h3>
+<p>PyTorch provides another handy abstraction, <code>torch.distributed.DeviceMesh</code>. For tensor parallelism, DeviceMesh isn’t as useful, but it’s good to be familiar with it. It’s mostly useful when combining multiple parallelization techniques (more on that in another article). It enables creating multiple sub-meshes on a single ProcessGroup, where each sub-mesh is responsible for a different parallelization technique. In Transformers, we do the initalization for you, so you don’t need to worry about it. For tensor parallelism, it is created like this:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>device_mesh <span class="op">=</span> torch.distributed.device_mesh.init_device_mesh(<span class="st">"cuda"</span>, (<span class="dv">8</span>, ), mesh_dim_names<span class="op">=</span>(<span class="st">"tp, ))</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Then we can use this device mesh to split the model across GPUs and PyTorch will know how to do the communication.</p>
+</section>
+<section id="dtensor" class="level3">
+<h3 class="anchored" data-anchor-id="dtensor">DTensor</h3>
+<p>Last but least, we have <code>torch.distributed.DTensor</code>. Abbrevation for Distributed Tensor, it’s a tensor subclass that on-top of the usual tensor operations, also handles the distributed logic. You won’t be interacting with it directly, but again, it’s a class that whole process of tensor parallelism is built on top of. Most important part of DTensor that is crucial to understand is the <code>placement</code> attribute. It’s an attribute that tells PyTorch how is the tensor placed on the devices. It’s an enum with the following possible values:</p>
+<ol type="1">
+<li><code>Shard(dimension)</code> - Annotates that this <code>DTensor</code> is sharded across a given dimension, over the device mesh it was constructed under. For example, if we would like to shard weights for column-wise partitioning, we would do:</li>
+</ol>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>weight <span class="op">=</span> ...</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>weight <span class="op">=</span> DTensor.from_local(weight, device_mesh[<span class="st">"tp"</span>], placements<span class="op">=</span>[Shard(<span class="dv">0</span>)]) <span class="co"># Shard across the 1st (column-wise) dimension</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>bias <span class="op">=</span> ...</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>bias <span class="op">=</span> DTensor.from_local(bias, device_mesh[<span class="st">"tp"</span>], placements<span class="op">=</span>[Shard(<span class="op">-</span><span class="dv">1</span>)]) <span class="co"># Shard across the ONLY dimension</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>To give another example, for row-wise partitioning, we would do:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>weight <span class="op">=</span> ...</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>weight <span class="op">=</span> DTensor.from_local(weight, device_mesh[<span class="st">"tp"</span>], placements<span class="op">=</span>[Shard(<span class="dv">1</span>)]) <span class="co"># Shard across the 2nd (row-wise) dimension</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>bias <span class="op">=</span> ...</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>bias <span class="op">=</span> DTensor.from_local(bias, device_mesh[<span class="st">"tp"</span>], placements<span class="op">=</span>[Replicate()]) <span class="co"># Replicate bias across all GPUs</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ol start="2" type="1">
+<li><code>Replicate()</code> - Annotates that this <code>DTensor</code> is replicated across all devices. Pretty straight-forward, it only creates a full copy of the tensor on each device.</li>
+<li><code>Partial()</code> - This placement is mostly of no interest to us, it’s used to annotate that this tensor is pending a reduction operation.</li>
+</ol>
+<p>You can find definitions for all of the different partitioning schemes in this <a href="https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py">file</a>. But wait, why do we use different sharding dimensions for column-wise and row-wise? It’s because it’s applied on <code>nn.Linear</code> weights, where the operation is <span class="math inline">\(Y = XW^T + b\)</span>. Math, as specified before, applies the same.</p>
+</section>
+</section>
 <section id="using-transformers" class="level2">
-<h2 class="anchored" data-anchor-id="using-transformers">3. Using 🤗 Transformers</h2>
+<h2 class="anchored" data-anchor-id="using-transformers">4. Using 🤗 Transformers</h2>
 <p>All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, Torch and 🤗 Transformers have got you covered! With PyTorch’s <code>torch.distributed</code> and <code>DTensor</code> it’s very simple to implement tensor parallelism, though it still requires manual configuration for each model. This is where 🤗 Transformers comes in. It provides with tensor parallelism pre-configured for some popular models, also providing a simple way to implement it for any other model.</p>
 <section id="transformers-tensor-parallelism" class="level3">
 <h3 class="anchored" data-anchor-id="transformers-tensor-parallelism">🤗 Transformers Tensor Parallelism</h3>
-<p>Let’s take a look at how we can use 🤗 Transformers’ tensor parallelism.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForCausalLM</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># model_id = "meta-llama/Meta-Llama-3-8B-Instruct" # uncomment for smaller number of GPUs</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> <span class="st">"meta-llama/Llama-4-Scout-17B-16E-Instruct"</span> <span class="co"># better to visualize</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(model_id, torch_dtype<span class="op">=</span>torch.bfloat16, tp_plan<span class="op">=</span><span class="st">"auto)</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="er">print</span>(model._tp_plan)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> transformers <span class="im">import</span> AutoModelForCausalLM</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="co"># model_id = "meta-llama/Meta-Llama-3-8B-Instruct" # uncomment for smaller number of GPUs</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>model_id <span class="op">=</span> <span class="st">"meta-llama/Llama-4-Scout-17B-16E-Instruct"</span> <span class="co"># better to visualize</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> AutoModelForCausalLM.from_pretrained(model_id, torch_dtype<span class="op">=</span>torch.bfloat16, tp_plan<span class="op">=</span><span class="st">"auto)</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="er">print</span>(model._tp_plan)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>This will load the model with tensor parallelism pre-configured for the best performance. The model has an attribute <code>_tp_plan</code> which contains information about the tensor parallelism plan, running the above with</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">torchrun</span> <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">torchrun</span> <span class="at">--nproc_per_node</span><span class="op">=</span>8 main.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>will give a result such as:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.q_proj"</span>: <span class="st">"colwise"</span>,</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.k_proj"</span>: <span class="st">"colwise"</span>,</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.v_proj"</span>: <span class="st">"colwise"</span>,</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.o_proj"</span>: <span class="st">"rowwise"</span>,</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    ...</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.q_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.k_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.v_proj"</span>: <span class="st">"colwise"</span>,</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"layer.*.self_attn.o_proj"</span>: <span class="st">"rowwise"</span>,</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>This tells us that the query projection is partitioned column-wise, the key and value projections are partitioned column-wise and the output projection is partitioned row-wise. The model is directly loaded and configured with this plan.</p>
 </section>
 <section id="todo" class="level3">

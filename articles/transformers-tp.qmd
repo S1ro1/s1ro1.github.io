@@ -172,7 +172,85 @@ so an `AllGather` operation is required, construct the full activations on all G
 - Can also be used on model embeddings, where row-wise partitioning across vocabulary size is applied.
 
 
-## 3. Using 🤗 Transformers
+## 3. Distributed PyTorch basics
+
+As with almost everything these days, PyTorch is the library of choice for this feature. In this section, we will cover some basics of distributed PyTorch and some features you should be familiar with, as they make this all possible.
+If you know what `torch.distributed.ProcessGroup`, `torch.distributed.DeviceMesh` and `torch.distributed.DTensor` are, you can skip this section and go to the next one.
+
+PyTorch provides a distributed package that allows you to run PyTorch code across multiple processes, even across multiple machines. In this section, we'll consider that each process is running on a single GPU, all processes are running on the same machine.
+
+### Process Group
+
+Encapsulating these processes is a `torch.distributed.ProcessGroup` abstraction. This class ensures communication and synchronization between processes. You should setup the process group, each time you want to run a distributed code.
+
+```python
+rank = int(os.environ["RANK"]) # get the rank of the current process, env variable is set by `torchrun`
+device = torch.device(f"cuda:{rank}")
+torch.cuda.set_device(device) # set the device of the current process
+torch.distributed.init_process_group(backend="nccl", device_id=device) # initialize the process group with a communication backend
+```
+
+This is a snippet to setup the process group for a single machine with multiple GPUs. You need to run this code, using a `torchrun` command, as such:
+
+```bash
+torchrun --nproc_per_node=8 main.py # This will run the script with 8 processes, each on a different GPU
+```
+`torchrun` is a abbrevation of `torch.distributed.run`, so you can also use it as:
+```bash
+python3 -m torch.distributed.run --nproc_per_node=8 main.py
+```
+
+This process group should also be destroyed after the script is finished, as it's not needed anymore.
+
+```python
+if torch.distributed.is_initialized():
+    torch.distributed.destroy_process_group()
+```
+
+### Device Mesh
+
+PyTorch provides another handy abstraction, `torch.distributed.DeviceMesh`. For tensor parallelism, DeviceMesh isn't as useful, but it's good to be familiar with it.
+It's mostly useful when combining multiple parallelization techniques (more on that in another article). It enables creating multiple sub-meshes on a single ProcessGroup, 
+where each sub-mesh is responsible for a different parallelization technique. In Transformers, we do the initalization for you, so you don't need to worry about it.
+For tensor parallelism, it is created like this:
+
+```python
+device_mesh = torch.distributed.device_mesh.init_device_mesh("cuda", (8, ), mesh_dim_names=("tp, ))
+```
+Then we can use this device mesh to split the model across GPUs and PyTorch will know how to do the communication.
+
+
+### DTensor
+
+Last but least, we have `torch.distributed.DTensor`. Abbrevation for Distributed Tensor, it's a tensor subclass that on-top of the usual tensor operations, also handles the distributed logic.
+You won't be interacting with it directly, but again, it's a class that whole process of tensor parallelism is built on top of.
+Most important part of DTensor that is crucial to understand is the `placement` attribute. It's an attribute that tells PyTorch how is the tensor placed on the devices.
+It's an enum with the following possible values:
+
+1) `Shard(dimension)` - Annotates that this `DTensor` is sharded across a given dimension, over the device mesh it was constructed under. For example, if we would like to shard weights for column-wise partitioning, we would do:
+```python
+weight = ...
+weight = DTensor.from_local(weight, device_mesh["tp"], placements=[Shard(0)]) # Shard across the 1st (column-wise) dimension
+bias = ...
+bias = DTensor.from_local(bias, device_mesh["tp"], placements=[Shard(-1)]) # Shard across the ONLY dimension
+```
+
+To give another example, for row-wise partitioning, we would do:
+```python
+weight = ...
+weight = DTensor.from_local(weight, device_mesh["tp"], placements=[Shard(1)]) # Shard across the 2nd (row-wise) dimension
+bias = ...
+bias = DTensor.from_local(bias, device_mesh["tp"], placements=[Replicate()]) # Replicate bias across all GPUs
+```
+
+2) `Replicate()` - Annotates that this `DTensor` is replicated across all devices. Pretty straight-forward, it only creates a full copy of the tensor on each device.
+3) `Partial()` - This placement is mostly of no interest to us, it's used to annotate that this tensor is pending a reduction operation.
+
+You can find definitions for all of the different partitioning schemes in this [file](https://github.com/huggingface/transformers/blob/main/src/transformers/integrations/tensor_parallel.py).
+But wait, why do we use different sharding dimensions for column-wise and row-wise? It's because it's applied on `nn.Linear` weights, where the operation is $Y = XW^T + b$.
+Math, as specified before, applies the same.
+
+## 4. Using 🤗 Transformers
 
 All of the methods mentioned above seem to be a lot of work to implement manually. Thankfully, Torch and 🤗 Transformers have got you covered! 
 With PyTorch's `torch.distributed` and `DTensor` it's very simple to implement tensor parallelism, though it still requires manual configuration for each model.
@@ -180,7 +258,7 @@ This is where 🤗 Transformers comes in. It provides with tensor parallelism pr
 
 ### 🤗 Transformers Tensor Parallelism
 
-Let's take a look at how we can use 🤗 Transformers' tensor parallelism.
+
 
 ```python
 from transformers import AutoModelForCausalLM
