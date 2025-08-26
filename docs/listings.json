@@ -2,6 +2,7 @@
   {
     "listing": "/index.html",
     "items": [
+      "/articles/on_overdoing.html",
       "/articles/deepcompile.html",
       "/articles/quantization-aware-training.html"
     ]
@@ -16,6 +17,10 @@
   },
   {
     "listing": "/articles/quantization-aware-training.html",
+    "items": []
+  },
+  {
+    "listing": "/articles/on_overdoing.html",
     "items": []
   }
 ]
